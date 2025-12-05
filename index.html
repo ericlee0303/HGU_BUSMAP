@@ -505,9 +505,9 @@
     let infoWindow = null;
     let intervalSec = 5;
 
-    const API_BASE_URL = ''; // 빈 문자열
+    const API_BASE_URL = 'hgu-busmap-git-main-lee-seon-jins-projects.vercel.app'; // 빈 문자열
 
-  const url =`${API_BASE_URL}/api/bus-locations?cityCode=${cityCode}&routeId=${routeId}&_=${Date.now()}`;    const statusText = document.getElementById('statusText');
+    const url =`${API_BASE_URL}/api/bus-locations?cityCode=${cityCode}&routeId=${routeId}&_=${Date.now()}`;    const statusText = document.getElementById('statusText');
     const intervalSlider = document.getElementById('intervalSlider');
     const intervalLabel = document.getElementById('intervalLabel');
     const routeSelect = document.getElementById('routeSelect');
