@@ -497,7 +497,8 @@
     </div>
   </div>
 
-  <script>
+
+    <script>
     let map;
     let markers = [];
     let timerId = null;
@@ -505,9 +506,11 @@
     let infoWindow = null;
     let intervalSec = 5;
 
-    const API_BASE_URL = 'hgu-busmap-git-main-lee-seon-jins-projects.vercel.app'; // 빈 문자열
+    // ✅ Vercel에서 프론트+백 같이 쓸 거면 빈 문자열 그대로 두기
+    //    (프론트와 같은 도메인의 /api/bus-locations 를 호출)
+    const API_BASE_URL = '';
 
-    const url =`${API_BASE_URL}/api/bus-locations?cityCode=${cityCode}&routeId=${routeId}&_=${Date.now()}`;    const statusText = document.getElementById('statusText');
+    const statusText = document.getElementById('statusText');
     const intervalSlider = document.getElementById('intervalSlider');
     const intervalLabel = document.getElementById('intervalLabel');
     const routeSelect = document.getElementById('routeSelect');
@@ -676,7 +679,6 @@
       stopList = Array.from(mapByName.values()).sort((a, b) =>
         a.name.localeCompare(b.name, 'ko')
       );
-      // console.log('정류장 인덱스:', stopList);
     }
 
     // 🔍 검색창 렌더링
@@ -711,23 +713,20 @@
       stopSearchResults.style.display = 'block';
     }
 
-    // 검색 입력 이벤트
     stopSearchInput.addEventListener('input', (e) => {
       const query = e.target.value.trim();
       if (!query) {
         hideStopResults();
         return;
       }
-      // stopList에서 일부만 필터 (현재 버스가 있는 정류장 기준)
       const lower = query.toLowerCase();
       const filtered = stopList.filter(s =>
         s.name.toLowerCase().includes(lower)
-      ).slice(0, 10); // 최대 10개만
+      ).slice(0, 10);
 
       showStopResults(filtered);
     });
 
-    // 검색 결과 클릭 → 지도 이동 + 보라색 마커 표시
     stopSearchResults.addEventListener('click', (e) => {
       const item = e.target.closest('.stop-result-item');
       if (!item) return;
@@ -747,11 +746,9 @@
       map.setCenter(position);
       map.setZoom(16);
 
-      // 기존 검색 마커 제거
       if (searchMarker) {
         searchMarker.setMap(null);
       }
-      // 새 검색 마커 추가
       searchMarker = new naver.maps.Marker({
         position,
         map,
@@ -761,7 +758,6 @@
       });
     });
 
-    // 포커스 잃을 때 살짝 늦게 닫기 (클릭 이벤트 먼저 처리되도록)
     stopSearchInput.addEventListener('blur', () => {
       setTimeout(() => {
         hideStopResults();
@@ -770,6 +766,7 @@
 
     // ===== 실시간 데이터 요청 =====
     async function fetchAndRender() {
+      // ✅ cityCode, routeId 를 "함수 안에서" 선언
       const cityCode = document.getElementById('citySelect').value;
       const selectedRoute = routeSelect.value;
 
@@ -843,7 +840,6 @@
     document.getElementById('startBtn').addEventListener('click', startPolling);
     document.getElementById('stopBtn').addEventListener('click', stopPolling);
 
-    // 슬라이더로 갱신 간격 변경
     intervalSlider.addEventListener('input', (e) => {
       intervalSec = Number(e.target.value);
       intervalLabel.textContent = `갱신: ${intervalSec}초`;
@@ -853,7 +849,6 @@
       }
     });
 
-    // 다크 모드 토글
     document.getElementById('themeBtn').addEventListener('click', () => {
       document.body.classList.toggle('dark');
       const isDark = document.body.classList.contains('dark');
@@ -861,7 +856,6 @@
         isDark ? '라이트모드' : '다크모드';
     });
 
-    // 노선 바꾸면 바로 새 노선으로 fetch (실시간 중일 때만)
     routeSelect.addEventListener('change', () => {
       clearMarkers();
       updateBusList([]);
@@ -871,9 +865,8 @@
         fetchAndRender();
       }
     });
-
-    // ===== 시간표 데이터 =====
-    const TIMETABLE = {
+// ===== 시간표 데이터 =====
+const TIMETABLE = {
       yangdeok: {
         directions: [
           {
@@ -1039,5 +1032,6 @@
 
     window.onload = initMap;
   </script>
+  
 </body>
 </html>
