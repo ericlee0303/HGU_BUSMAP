@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>실시간 버스 위치 확인</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- 네이버 지도 API -->
+  <script type="text/javascript"
+          src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=md2rkkxlo0">
+  </script>
+
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #top-bar {
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid #ddd;
+      flex-wrap: wrap;
+      background: #ffffff;
+    }
+    #map-wrapper {
+      position: relative;
+      width: 100%;
+      height: calc(100vh - 60px);
+      display: flex;
+    }
+    #map {
+      flex: 1;
+      height: 100%;
+    }
+    select, button, input {
+      padding: 4px 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #statusText {
+      margin-left: auto;
+      font-size: 12px;
+      color: #555;
+    }
+
+    /* 업데이트 간격 슬라이더 */
+    #interval-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+    }
+    #intervalSlider {
+      width: 100px;
+    }
+
+    /* 정류장 검색 UI */
+    #stopSearchWrapper {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+    }
+    #stopSearchInput {
+      min-width: 150px;
+    }
+    #stopSearchResults {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 2500;
+      display: none;
+    }
+    .stop-result-item {
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .stop-result-item:hover {
+      background: #f3f4f6;
+    }
+    .stop-result-empty {
+      padding: 4px 8px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    /* 공통 커스텀 마커 스타일 */
+    .marker-base {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      box-shadow: 0 0 4px rgba(0,0,0,0.4);
+      border: 2px solid #fff;
+      user-select: none;
+    }
+
+    /* 302 (문덕–한동대) 버스 마커: 초록 동그라미 */
+    .marker-bus-munduk {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #22c55e; /* 초록 */
+    }
+
+    /* 302 (양덕행) 버스 마커: 주황 동그라미 */
+    .marker-bus-yangdeok {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: #f97316; /* 주황 */
+    }
+
+    /* 학교(한동대) 마커: 파란 네모 박스 */
+    .marker-school {
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: #1d4ed8; /* 진한 파랑 */
+      font-size: 10px;
+    }
+
+    /* 정류장 검색 마커: 보라색 네모 */
+    .marker-stop-search {
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: #a855f7; /* 보라 */
+      font-size: 10px;
+    }
+
+    /* 범례 스타일 */
+    #legend {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255,255,255,0.95);
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      padding: 8px 10px;
+      font-size: 12px;
+      z-index: 2000;
+    }
+    #legend h4 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    /* 오른쪽 버스 리스트 패널 */
+    #side-panel {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      width: 220px;
+      max-height: 260px;
+      background: rgba(255,255,255,0.98);
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      padding: 8px 10px;
+      font-size: 12px;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+    }
+    #side-panel h4 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    #busList {
+      overflow-y: auto;
+      flex: 1;
+    }
+    .bus-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 12px;
+    }
+    .bus-item:last-child {
+      border-bottom: none;
+    }
+    .badge {
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      color: #fff;
+      font-weight: 600;
+    }
+    .badge-302 {
+      background: #22c55e;
+    }
+    .badge-yangdeok {
+      background: #f97316;
+    }
+    .bus-stop-name {
+      font-weight: 500;
+    }
+    .bus-stop-sub {
+      font-size: 11px;
+      color: #6b7280;
+    }
+
+    /* 다크 모드 */
+    body.dark {
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+    body.dark #top-bar {
+      background: #111827;
+      border-bottom-color: #374151;
+    }
+    body.dark #statusText {
+      color: #9ca3af;
+    }
+    body.dark #legend,
+    body.dark #side-panel {
+      background: rgba(17,24,39,0.96);
+      color: #e5e7eb;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+    }
+    body.dark .bus-item {
+      border-bottom-color: #4b5563;
+    }
+    body.dark #stopSearchResults {
+      background: #111827;
+      border-color: #374151;
+    }
+    body.dark .stop-result-item:hover {
+      background: #1f2937;
+    }
+    body.dark .stop-result-empty {
+      color: #9ca3af;
+    }
+
+    /* ===== 시간표 모달 ===== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+    }
+    .modal-backdrop.show {
+      display: flex;
+    }
+    .modal {
+      background: #ffffff;
+      border-radius: 12px;
+      max-width: 900px;
+      width: 95%;
+      max-height: 90vh;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      background: #f9fafb;
+    }
+    .modal-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .modal-close {
+      border: none;
+      background: transparent;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .modal-tabs {
+      display: flex;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .modal-tab-btn {
+      flex: 1;
+      padding: 6px 8px;
+      font-size: 13px;
+      border: none;
+      background: #f3f4f6;
+      cursor: pointer;
+    }
+    .modal-tab-btn.active {
+      background: #ffffff;
+      border-bottom: 2px solid #2563eb;
+      font-weight: 600;
+    }
+    .modal-body {
+      padding: 8px 12px;
+      overflow: auto;
+      background: #ffffff;
+      font-size: 12px;
+    }
+    .modal-subheader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .direction-buttons {
+      display: inline-flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .direction-btn {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .direction-btn.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+      font-weight: 600;
+    }
+    .next-info {
+      font-size: 11px;
+      color: #374151;
+    }
+
+    table.timetable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.timetable th,
+    table.timetable td {
+      border: 1px solid #e5e7eb;
+      padding: 4px 6px;
+      text-align: center;
+    }
+    table.timetable th {
+      background: #f3f4f6;
+      font-weight: 600;
+    }
+    tr.next-row {
+      background: #fef3c7;
+    }
+
+    body.dark .modal {
+      background: #111827;
+      color: #e5e7eb;
+    }
+    body.dark .modal-header {
+      background: #1f2937;
+      border-bottom-color: #374151;
+    }
+    body.dark .modal-tabs {
+      border-bottom-color: #374151;
+    }
+    body.dark .modal-tab-btn {
+      background: #1f2937;
+      color: #e5e7eb;
+    }
+    body.dark .modal-tab-btn.active {
+      background: #111827;
+      border-bottom-color: #3b82f6;
+    }
+    body.dark .modal-body {
+      background: #111827;
+    }
+    body.dark table.timetable th {
+      background: #1f2937;
+      border-color: #374151;
+    }
+    body.dark table.timetable td {
+      border-color: #374151;
+    }
+    body.dark tr.next-row {
+      background: #4b5563;
+    }
+  </style>
+</head>
+<body>
+  <div id="top-bar">
+    <span>도시:</span>
+    <select id="citySelect">
+      <option value="37010">포항</option>
+    </select>
+
+    <span>노선:</span>
+    <select id="routeSelect">
+      <option value="ALL">모두</option>
+      <option value="PHB350000389">302번 (문덕-한동대)</option>
+      <option value="PHB350000597">양덕</option>
+    </select>
+
+    <!-- 🔍 정류장 검색 -->
+    <div id="stopSearchWrapper">
+      <input
+        id="stopSearchInput"
+        type="text"
+        placeholder="정류장 검색 (예: 한동대, 북부시장)"
+      />
+      <div id="stopSearchResults"></div>
+    </div>
+
+    <button id="startBtn">실시간 시작</button>
+    <button id="stopBtn">중지</button>
+
+    <button id="timetableBtn">시간표 보기</button>
+
+    <div id="interval-wrapper">
+      <span id="intervalLabel">갱신: 5초</span>
+      <input id="intervalSlider" type="range" min="2" max="20" value="5" />
+    </div>
+
+    <button id="themeBtn">다크모드</button>
+
+    <span id="statusText">업데이트 전</span>
+  </div>
+
+  <div id="map-wrapper">
+    <div id="map"></div>
+
+    <!-- 범례 -->
+    <div id="legend">
+      <h4>범례</h4>
+      <div class="legend-row">
+        <span class="marker-base marker-bus-munduk">302</span>
+        <span>302 (문덕-한동대)</span>
+      </div>
+      <div class="legend-row">
+        <span class="marker-base marker-bus-yangdeok">양덕</span>
+        <span>302 (양덕 방면)</span>
+      </div>
+      <div class="legend-row">
+        <span class="marker-base marker-school">HGU</span>
+        <span>한동대학교</span>
+      </div>
+      <div class="legend-row">
+        <span class="marker-base marker-stop-search">정류장</span>
+        <span>검색한 정류장</span>
+      </div>
+    </div>
+
+    <!-- 오른쪽 버스 리스트 패널 -->
+    <div id="side-panel">
+      <h4>현재 운행 중인 차량</h4>
+      <div id="busList"></div>
+    </div>
+  </div>
+
+  <!-- 시간표 모달 -->
+  <div id="timetableModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">버스 시간표</div>
+        <button class="modal-close" id="timetableCloseBtn">&times;</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab-btn active" data-route="yangdeok" id="tabYangdeok">양덕지선</button>
+        <button class="modal-tab-btn" data-route="bus302" id="tabBus302">302번 (평일)</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-subheader">
+          <div class="direction-buttons" id="directionButtons"></div>
+          <div class="next-info" id="nextInfo">다음 버스 정보 없음</div>
+        </div>
+        <table class="timetable">
+          <thead>
+            <tr>
+              <th>순번</th>
+              <th>출발 시간</th>
+            </tr>
+          </thead>
+          <tbody id="timetableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let map;
+    let markers = [];
+    let timerId = null;
+    let lastUpdatedAt = null;
+    let infoWindow = null;
+    let intervalSec = 5;
+
+    const API_BASE_URL = 'http://localhost:4000';
+    const statusText = document.getElementById('statusText');
+    const intervalSlider = document.getElementById('intervalSlider');
+    const intervalLabel = document.getElementById('intervalLabel');
+    const routeSelect = document.getElementById('routeSelect');
+    const busListEl = document.getElementById('busList');
+
+    const ROUTE_302_MUNDUK = 'PHB350000389';
+    const ROUTE_302_YANGDEOK = 'PHB350000597';
+
+    // 🔍 정류장 검색 관련 상태
+    let lastBusData = [];      // 마지막으로 받은 전체 버스 리스트
+    let stopList = [];         // { name, lat, lng }[]
+    let searchMarker = null;   // 검색된 정류장 마커
+
+    // 커스텀 아이콘 정의
+    const BUS_ICON_MUNDUK = {
+      content: '<div class="marker-base marker-bus-munduk">302</div>',
+      anchor: new naver.maps.Point(12, 12)
+    };
+    const BUS_ICON_YANGDEOK = {
+      content: '<div class="marker-base marker-bus-yangdeok">양덕</div>',
+      anchor: new naver.maps.Point(12, 12)
+    };
+    const SCHOOL_ICON = {
+      content: '<div class="marker-base marker-school">HGU</div>',
+      anchor: new naver.maps.Point(16, 16)
+    };
+    const STOP_SEARCH_ICON = {
+      content: '<div class="marker-base marker-stop-search">정류장</div>',
+      anchor: new naver.maps.Point(16, 16)
+    };
+
+    function initMap() {
+      const center = new naver.maps.LatLng(36.1038110, 129.390669);
+      map = new naver.maps.Map('map', {
+        center,
+        zoom: 15
+      });
+
+      // 한동대 고정 마커
+      new naver.maps.Marker({
+        position: center,
+        map,
+        icon: SCHOOL_ICON,
+        zIndex: 1000,
+        title: '한동대학교'
+      });
+
+      infoWindow = new naver.maps.InfoWindow({
+        borderWidth: 1,
+        anchorSkew: true
+      });
+    }
+
+    function clearMarkers() {
+      markers.forEach(m => m.setMap(null));
+      markers = [];
+    }
+
+    function getBusIconByRoute(routeId) {
+      if (routeId === ROUTE_302_MUNDUK) return BUS_ICON_MUNDUK;
+      if (routeId === ROUTE_302_YANGDEOK) return BUS_ICON_YANGDEOK;
+      return BUS_ICON_MUNDUK;
+    }
+
+    function updateBusList(busList) {
+      busListEl.innerHTML = '';
+
+      if (!busList || busList.length === 0) {
+        const empty = document.createElement('div');
+        empty.textContent = '실시간 위치 데이터가 없습니다.';
+        empty.style.fontSize = '12px';
+        empty.style.color = '#6b7280';
+        busListEl.appendChild(empty);
+        return;
+      }
+
+      busList.forEach(bus => {
+        const item = document.createElement('div');
+        item.className = 'bus-item';
+
+        const routeId = bus.routeId;
+        const badge = document.createElement('span');
+        badge.classList.add('badge');
+        if (routeId === ROUTE_302_MUNDUK) {
+          badge.classList.add('badge-302');
+          badge.textContent = '302';
+        } else if (routeId === ROUTE_302_YANGDEOK) {
+          badge.classList.add('badge-yangdeok');
+          badge.textContent = '양덕';
+        } else {
+          badge.textContent = '버스';
+        }
+
+        const textBox = document.createElement('div');
+        const main = document.createElement('div');
+        main.className = 'bus-stop-name';
+        main.textContent = bus.nodenm ?? '(정류장 정보 없음)';
+
+        const sub = document.createElement('div');
+        sub.className = 'bus-stop-sub';
+        sub.textContent = bus.routenm ?? '';
+
+        textBox.appendChild(main);
+        textBox.appendChild(sub);
+        item.appendChild(badge);
+        item.appendChild(textBox);
+        busListEl.appendChild(item);
+      });
+    }
+
+    function renderBusMarkers(busList) {
+      clearMarkers();
+
+      busList.forEach(bus => {
+        const lat = Number(bus.lat);
+        const lng = Number(bus.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          console.warn('유효하지 않은 좌표, 스킵:', bus);
+          return;
+        }
+
+        const position = new naver.maps.LatLng(lat, lng);
+        const icon = getBusIconByRoute(bus.routeId);
+
+        const marker = new naver.maps.Marker({
+          position,
+          map,
+          icon,
+          title: `${bus.routenm} / ${bus.nodenm}`,
+          zIndex: 500
+        });
+
+        naver.maps.Event.addListener(marker, 'click', () => {
+          const updatedText = lastUpdatedAt ? lastUpdatedAt : '정보 없음';
+          const content = `
+            <div style="padding:6px 8px; font-size:12px;">
+              <div><strong>노선:</strong> ${bus.routenm ?? ''}</div>
+              <div><strong>정류장:</strong> ${bus.nodenm ?? ''}</div>
+              <div><strong>마지막 업데이트:</strong> ${updatedText}</div>
+            </div>
+          `;
+          infoWindow.setContent(content);
+          infoWindow.open(map, marker);
+        });
+
+        markers.push(marker);
+      });
+    }
+
+    // 🔍 정류장 인덱스 만들기: 현재 버스들이 서 있는 정류장 목록을 기반으로
+    function buildStopIndex(busList) {
+      const mapByName = new Map();
+
+      busList.forEach(bus => {
+        const name = bus.nodenm;
+        if (!name) return;
+        const lat = Number(bus.lat);
+        const lng = Number(bus.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+        if (!mapByName.has(name)) {
+          mapByName.set(name, { name, lat, lng });
+        }
+      });
+
+      stopList = Array.from(mapByName.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, 'ko')
+      );
+      // console.log('정류장 인덱스:', stopList);
+    }
+
+    // 🔍 검색창 렌더링
+    const stopSearchInput = document.getElementById('stopSearchInput');
+    const stopSearchResults = document.getElementById('stopSearchResults');
+
+    function hideStopResults() {
+      stopSearchResults.style.display = 'none';
+      stopSearchResults.innerHTML = '';
+    }
+
+    function showStopResults(items) {
+      stopSearchResults.innerHTML = '';
+
+      if (items.length === 0) {
+        const div = document.createElement('div');
+        div.className = 'stop-result-empty';
+        div.textContent = '검색 결과가 없습니다.';
+        stopSearchResults.appendChild(div);
+      } else {
+        items.forEach(stop => {
+          const div = document.createElement('div');
+          div.className = 'stop-result-item';
+          div.dataset.lat = stop.lat;
+          div.dataset.lng = stop.lng;
+          div.dataset.name = stop.name;
+          div.textContent = stop.name;
+          stopSearchResults.appendChild(div);
+        });
+      }
+
+      stopSearchResults.style.display = 'block';
+    }
+
+    // 검색 입력 이벤트
+    stopSearchInput.addEventListener('input', (e) => {
+      const query = e.target.value.trim();
+      if (!query) {
+        hideStopResults();
+        return;
+      }
+      // stopList에서 일부만 필터 (현재 버스가 있는 정류장 기준)
+      const lower = query.toLowerCase();
+      const filtered = stopList.filter(s =>
+        s.name.toLowerCase().includes(lower)
+      ).slice(0, 10); // 최대 10개만
+
+      showStopResults(filtered);
+    });
+
+    // 검색 결과 클릭 → 지도 이동 + 보라색 마커 표시
+    stopSearchResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.stop-result-item');
+      if (!item) return;
+
+      const name = item.dataset.name;
+      const lat = Number(item.dataset.lat);
+      const lng = Number(item.dataset.lng);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return;
+      }
+
+      stopSearchInput.value = name;
+      hideStopResults();
+
+      const position = new naver.maps.LatLng(lat, lng);
+      map.setCenter(position);
+      map.setZoom(16);
+
+      // 기존 검색 마커 제거
+      if (searchMarker) {
+        searchMarker.setMap(null);
+      }
+      // 새 검색 마커 추가
+      searchMarker = new naver.maps.Marker({
+        position,
+        map,
+        icon: STOP_SEARCH_ICON,
+        zIndex: 900,
+        title: name
+      });
+    });
+
+    // 포커스 잃을 때 살짝 늦게 닫기 (클릭 이벤트 먼저 처리되도록)
+    stopSearchInput.addEventListener('blur', () => {
+      setTimeout(() => {
+        hideStopResults();
+      }, 200);
+    });
+
+    // ===== 실시간 데이터 요청 =====
+    async function fetchAndRender() {
+      const cityCode = document.getElementById('citySelect').value;
+      const selectedRoute = routeSelect.value;
+
+      const routeIdsToFetch =
+        selectedRoute === 'ALL'
+          ? [ROUTE_302_MUNDUK, ROUTE_302_YANGDEOK]
+          : [selectedRoute];
+
+      let allBuses = [];
+
+      try {
+        for (const routeId of routeIdsToFetch) {
+          const url =
+            `${API_BASE_URL}/api/bus-locations?cityCode=${cityCode}` +
+            `&routeId=${routeId}&_=${Date.now()}`;
+
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) {
+            console.error('API 오류', res.status, 'routeId=', routeId);
+            continue;
+          }
+          const data = await res.json();
+
+          if (Array.isArray(data) && data.length > 0) {
+            const withRouteId = data.map(b => ({ ...b, routeId }));
+            allBuses = allBuses.concat(withRouteId);
+          }
+        }
+
+        if (allBuses.length === 0) {
+          if (statusText) {
+            statusText.textContent =
+              '현재 이 노선에 실시간 위치 데이터가 없습니다.';
+          }
+          clearMarkers();
+          updateBusList([]);
+          lastBusData = [];
+          stopList = [];
+          return;
+        }
+
+        lastBusData = allBuses;
+        buildStopIndex(lastBusData);
+
+        lastUpdatedAt = new Date().toLocaleTimeString();
+        renderBusMarkers(allBuses);
+        updateBusList(allBuses);
+
+        if (statusText) {
+          statusText.textContent = '마지막 업데이트: ' + lastUpdatedAt;
+        }
+      } catch (err) {
+        console.error('요청 실패', err);
+        if (statusText) statusText.textContent = '요청 실패: ' + err.message;
+      }
+    }
+
+    function startPolling() {
+      if (!map) initMap();
+      fetchAndRender();
+      if (timerId) clearInterval(timerId);
+      timerId = setInterval(fetchAndRender, intervalSec * 1000);
+    }
+    function stopPolling() {
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startPolling);
+    document.getElementById('stopBtn').addEventListener('click', stopPolling);
+
+    // 슬라이더로 갱신 간격 변경
+    intervalSlider.addEventListener('input', (e) => {
+      intervalSec = Number(e.target.value);
+      intervalLabel.textContent = `갱신: ${intervalSec}초`;
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = setInterval(fetchAndRender, intervalSec * 1000);
+      }
+    });
+
+    // 다크 모드 토글
+    document.getElementById('themeBtn').addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      document.getElementById('themeBtn').textContent =
+        isDark ? '라이트모드' : '다크모드';
+    });
+
+    // 노선 바꾸면 바로 새 노선으로 fetch (실시간 중일 때만)
+    routeSelect.addEventListener('change', () => {
+      clearMarkers();
+      updateBusList([]);
+      lastBusData = [];
+      stopList = [];
+      if (timerId) {
+        fetchAndRender();
+      }
+    });
+
+    // ===== 시간표 데이터 =====
+    const TIMETABLE = {
+      yangdeok: {
+        directions: [
+          {
+            id: 'yangdeokToHgu',
+            label: '양덕 → 한동대',
+            times: [
+              '06:00','06:35','07:10','07:45','08:10','08:50','09:30',
+              '10:05','10:40','11:15','11:50','12:25','13:00','13:35',
+              '14:10','14:45','15:20','15:55','16:30','17:05','17:40',
+              '18:15','18:50','19:25','20:00','20:40','21:20','22:00','22:40'
+            ]
+          },
+          {
+            id: 'hguToYangdeok',
+            label: '한동대 → 양덕',
+            times: [
+              '06:20','06:55','07:30','08:00','08:40','09:15','09:50',
+              '10:25','11:00','11:35','12:10','12:45','13:20','13:55',
+              '14:30','15:05','15:40','16:15','16:50','17:25','18:00',
+              '18:35','19:10','19:45','20:20','20:55','21:35','22:15','22:55'
+            ]
+          }
+        ]
+      },
+      bus302: {
+        directions: [
+          {
+            id: 'mundukToHgu',
+            label: '문덕 차고지 → 한동대 방향(상행)',
+            times: [
+              '05:20','05:38','05:57','06:15','06:35','06:56','07:15',
+              '07:35','07:55','08:15','08:35','08:55','09:15','09:35',
+              '09:53','10:12','10:26','10:49','11:07','11:26','11:44',
+              '12:03','12:21','12:41','13:01','13:21','13:40','14:00',
+              '14:20','14:40','15:00','15:20','15:40','16:00','16:20',
+              '16:39','16:57','17:17','17:35','17:55','18:15','18:35',
+              '18:55','19:15','19:35','19:55','20:15','20:35','20:55',
+              '21:14','21:32','21:51','22:10','22:30','22:50'
+            ]
+          },
+          {
+            id: 'hguToMunduk',
+            label: '한동대 승강장 → 문덕 방향(하행)',
+            times: [
+              '05:50','06:05','06:21','06:37','06:53','07:10','07:28',
+              '07:47','08:05','08:25','08:45','09:05','09:25','09:45',
+              '10:05','10:25','10:45','11:05','11:25','11:43','12:02',
+              '12:20','12:39','12:57','13:16','13:34','13:53','14:11',
+              '14:31','14:51','15:11','15:30','15:50','16:10','16:30',
+              '16:50','17:10','17:30','17:50','18:10','18:29','18:47',
+              '19:07','19:25','19:45','20:05','20:25','20:45','21:05',
+              '21:25','21:45','22:05','22:25','22:45'
+            ]
+          }
+        ]
+      }
+    };
+
+    function timeToMinutes(t) {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    function getNextDeparture(times) {
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      for (let i = 0; i < times.length; i++) {
+        if (timeToMinutes(times[i]) > nowMin) {
+          return { index: i, time: times[i] };
+        }
+      }
+      return null;
+    }
+
+    function renderTimetable(routeKey, dirIndex) {
+      const route = TIMETABLE[routeKey];
+      if (!route) return;
+
+      const direction = route.directions[dirIndex];
+      if (!direction) return;
+
+      const tbody = document.getElementById('timetableBody');
+      const nextInfo = document.getElementById('nextInfo');
+
+      tbody.innerHTML = '';
+
+      const next = getNextDeparture(direction.times);
+
+      direction.times.forEach((t, idx) => {
+        const tr = document.createElement('tr');
+        if (next && next.index === idx) {
+          tr.classList.add('next-row');
+        }
+        const tdIdx = document.createElement('td');
+        tdIdx.textContent = idx + 1;
+        const tdTime = document.createElement('td');
+        tdTime.textContent = t;
+        tr.appendChild(tdIdx);
+        tr.appendChild(tdTime);
+        tbody.appendChild(tr);
+      });
+
+      if (next) {
+        nextInfo.textContent =
+          `지금 기준 다음 버스: ${direction.label} ${next.time} (총 ${direction.times.length}대 중 ${next.index + 1}번째)`;
+      } else {
+        nextInfo.textContent =
+          `오늘 ${direction.label} 남은 출발이 없습니다.`;
+      }
+    }
+
+    function renderDirectionButtons(routeKey, activeIndex) {
+      const route = TIMETABLE[routeKey];
+      const container = document.getElementById('directionButtons');
+      container.innerHTML = '';
+
+      route.directions.forEach((dir, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'direction-btn' + (idx === activeIndex ? ' active' : '');
+        btn.textContent = dir.label;
+        btn.addEventListener('click', () => {
+          renderDirectionButtons(routeKey, idx);
+          renderTimetable(routeKey, idx);
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    // 시간표 모달 제어
+    const timetableModal = document.getElementById('timetableModal');
+    const timetableBtn = document.getElementById('timetableBtn');
+    const timetableCloseBtn = document.getElementById('timetableCloseBtn');
+    const tabButtons = document.querySelectorAll('.modal-tab-btn');
+
+    let currentRouteKey = 'yangdeok';
+
+    function openTimetableModal() {
+      timetableModal.classList.add('show');
+      renderDirectionButtons(currentRouteKey, 0);
+      renderTimetable(currentRouteKey, 0);
+    }
+    function closeTimetableModal() {
+      timetableModal.classList.remove('show');
+    }
+
+    timetableBtn.addEventListener('click', openTimetableModal);
+    timetableCloseBtn.addEventListener('click', closeTimetableModal);
+
+    timetableModal.addEventListener('click', (e) => {
+      if (e.target === timetableModal) closeTimetableModal();
+    });
+
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        currentRouteKey = btn.dataset.route; // 'yangdeok' 또는 'bus302'
+        renderDirectionButtons(currentRouteKey, 0);
+        renderTimetable(currentRouteKey, 0);
+      });
+    });
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
